@@ -49,7 +49,6 @@ router.post("/analyze", async (req, res) => {
 
           if (!existingPhoto.empty) {
             console.log(`Skipping duplicate photo: ${photoUrl}`);
-
             return null; // Skip this photo
           }
 
@@ -112,13 +111,18 @@ router.post("/analyze", async (req, res) => {
               landmarks,
               emotions,
               category: category || "Uncategorized",
-              date: photo.date,
+              date: photo.date || new Date().toISOString(), // Use current date if undefined
             };
-            await Photo.add(savedPhoto); // Filter out photos without a valid date
-            const validDatePhotos = allPhotos.filter(
-              (photo) => photo.date && !isNaN(new Date(photo.date).getTime())
-            );
-            // console.log("Saved Photo Data:", savedPhoto);
+
+            if (
+              !savedPhoto.date ||
+              isNaN(new Date(savedPhoto.date).getTime())
+            ) {
+              console.warn(`Skipping photo with invalid date: ${photo.url}`);
+              return null; // Skip this photo
+            }
+
+            await Photo.add(savedPhoto);
 
             return savedPhoto;
           } catch (err) {
@@ -154,7 +158,9 @@ router.get("/getAnalyzedPhotos", async (req, res) => {
     if (!userId) throw new Error("User ID is required");
 
     const photos = await Photo.where("userId", "==", userId).get();
-    const formattedPhotos = photos.docs.map((doc) => doc.data());
+    const formattedPhotos = photos.docs
+      .map((doc) => doc.data())
+      .filter((photo) => photo.date !== "Unknown"); // Filter valid dates
 
     const emotionGroups = {
       surprise: [],
@@ -206,7 +212,7 @@ router.get("/getAnalyzedPhotos", async (req, res) => {
       photos: emotionGroups,
       thematicGroups,
     });
-    // console.log("Grouped Photos:", emotionGroups);
+    console.log("Grouped Photos:", emotionGroups);
   } catch (error) {
     console.error("Error fetching analyzed photos:", error);
     res.status(500).json({ error: error.message });
